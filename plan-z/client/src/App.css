@@ -62,3 +62,48 @@ button {
   margin: 0 auto 30px;
   color: #4b5563;
 }
+
+.page {
+  padding: 50px 60px;
+}
+
+.page h1 {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+
+.page > p {
+  color: #6b7280;
+  margin-bottom: 30px;
+}
+
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 25px;
+}
+
+.event-card {
+  background: white;
+  padding: 25px;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.event-card span {
+  color: #2563eb;
+  font-weight: bold;
+}
+
+.event-card h3 {
+  margin: 14px 0;
+}
+
+.event-card p {
+  color: #4b5563;
+}
+
+.event-card button {
+  margin-top: 15px;
+  width: 100%;
+}
