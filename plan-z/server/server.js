@@ -4,7 +4,10 @@ const mongoose = require("mongoose");
 require("dotenv").config();
 
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+
 const Event = require("./models/Event");
+const User = require("./models/User");
 
 const app = express();
 
@@ -20,7 +23,7 @@ app.get("/", (req, res) => {
   res.send("PLAN-Z API running");
 });
 
-/* Attendee/public: only approved events */
+/* PUBLIC EVENTS */
 app.get("/api/events", async (req, res) => {
   try {
     const events = await Event.find({ status: "approved" });
@@ -30,7 +33,7 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
-/* Admin: all events */
+/* ADMIN EVENTS */
 app.get("/api/admin/events", async (req, res) => {
   try {
     const events = await Event.find();
@@ -40,7 +43,7 @@ app.get("/api/admin/events", async (req, res) => {
   }
 });
 
-/* Add event: default pending */
+/* ADD EVENT */
 app.post("/api/events", async (req, res) => {
   try {
     const { title, location } = req.body;
@@ -58,7 +61,7 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-/* Delete event */
+/* DELETE EVENT */
 app.delete("/api/events/:id", async (req, res) => {
   try {
     const deletedEvent = await Event.findByIdAndDelete(req.params.id);
@@ -73,7 +76,7 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
-/* Approve event */
+/* APPROVE EVENT */
 app.put("/api/admin/approve/:id", async (req, res) => {
   try {
     const updatedEvent = await Event.findByIdAndUpdate(
@@ -88,7 +91,7 @@ app.put("/api/admin/approve/:id", async (req, res) => {
   }
 });
 
-/* Admin login */
+/* ADMIN LOGIN */
 app.post("/api/admin/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -98,10 +101,71 @@ app.post("/api/admin/login", async (req, res) => {
         expiresIn: "1h",
       });
 
-      return res.json({ token });
+      return res.json({ token, role: "admin" });
     }
 
     res.status(401).json({ message: "Invalid credentials" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* USER SIGNUP */
+app.post("/api/users/signup", async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body;
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      name,
+      email,
+      password: hashedPassword,
+      role,
+    });
+
+    await newUser.save();
+
+    res.json({ message: "Signup successful" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* USER LOGIN */
+app.post("/api/users/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "Wrong password" });
+    }
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      "secretkey",
+      { expiresIn: "1h" }
+    );
+
+    res.json({
+      token,
+      role: user.role,
+      name: user.name,
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }

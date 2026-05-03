@@ -6,6 +6,7 @@ import Events from "./pages/Events";
 import Login from "./pages/Login";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
+import Signup from "./pages/Signup";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
       {/* Navbar */}
       <nav className="navbar">
         <h2>PLAN-Z</h2>
+        <Link to="/signup">Signup</Link>
 
         <div>
           <Link to="/">Home</Link> |{" "}
@@ -29,6 +31,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        <Route path="/signup" element={<Signup />} />
       </Routes>
     </div>
   );
