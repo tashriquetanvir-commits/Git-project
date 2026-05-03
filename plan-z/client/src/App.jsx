@@ -1,26 +1,27 @@
 import "./App.css";
+import { Routes, Route, Link } from "react-router-dom";
+import Home from "./pages/Home";
+import Events from "./pages/Events";
+import Login from "./pages/Login";
 
 function App() {
   return (
-    <div className="app">
+    <div>
       <nav className="navbar">
         <h2>PLAN-Z</h2>
         <div>
-          <a>Home</a>
-          <a>Events</a>
-          <a>Login</a>
+          <Link to="/">Home</Link>
+          <Link to="/events">Events</Link>
+          <Link to="/login">Login</Link>
           <button>Register</button>
         </div>
       </nav>
 
-      <section className="hero">
-        <h1>Discover, Book, and Manage Events Easily</h1>
-        <p>
-          PLAN-Z is an event management and ticketing platform for attendees,
-          organizers, and admins.
-        </p>
-        <button>Browse Events</button>
-      </section>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/events" element={<Events />} />
+        <Route path="/login" element={<Login />} />
+      </Routes>
     </div>
   );
 }
