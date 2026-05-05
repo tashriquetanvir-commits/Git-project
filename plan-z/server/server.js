@@ -8,6 +8,7 @@ const bcrypt = require("bcryptjs");
 
 const Event = require("./models/Event");
 const User = require("./models/User");
+const Booking = require("./models/Booking");
 
 const app = express();
 
@@ -43,14 +44,17 @@ app.get("/api/admin/events", async (req, res) => {
   }
 });
 
-/* ADD EVENT */
+/* ADD EVENT REQUEST */
 app.post("/api/events", async (req, res) => {
   try {
-    const { title, location } = req.body;
+    const { title, venue, location, price, description } = req.body;
 
     const newEvent = new Event({
       title,
+      venue,
       location,
+      price,
+      description,
       status: "pending",
     });
 
@@ -88,25 +92,6 @@ app.put("/api/admin/approve/:id", async (req, res) => {
     res.json(updatedEvent);
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-/* ADMIN LOGIN */
-app.post("/api/admin/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (email === "admin@test.com" && password === "admin123") {
-      const token = jwt.sign({ role: "admin" }, "secretkey", {
-        expiresIn: "1h",
-      });
-
-      return res.json({ token, role: "admin" });
-    }
-
-    res.status(401).json({ message: "Invalid credentials" });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -156,7 +141,7 @@ app.post("/api/users/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, email: user.email },
       "secretkey",
       { expiresIn: "1h" }
     );
@@ -165,9 +150,64 @@ app.post("/api/users/login", async (req, res) => {
       token,
       role: user.role,
       name: user.name,
+      email: user.email,
     });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* ADMIN LOGIN */
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (email === "admin@test.com" && password === "admin123") {
+      const token = jwt.sign({ role: "admin" }, "secretkey", {
+        expiresIn: "1h",
+      });
+
+      return res.json({ token, role: "admin" });
+    }
+
+    res.status(401).json({ message: "Invalid credentials" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* BOOK TICKET - PAYMENT PLACEHOLDER */
+app.post("/api/bookings", async (req, res) => {
+  try {
+    const { eventId, eventTitle, userEmail, quantity, totalPrice } = req.body;
+
+    const newBooking = new Booking({
+      eventId,
+      eventTitle,
+      userEmail,
+      quantity,
+      totalPrice,
+      paymentStatus: "Payment Placeholder - Not Paid Yet",
+    });
+
+    await newBooking.save();
+
+    res.json({
+      message: "Booking created with payment placeholder",
+      booking: newBooking,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* BOOKING HISTORY */
+app.get("/api/bookings/:email", async (req, res) => {
+  try {
+    const bookings = await Booking.find({ userEmail: req.params.email });
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

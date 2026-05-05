@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import Signup from "./pages/Signup";
+import UserDashboard from "./pages/UserDashboard";
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
         <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/user-dashboard" element={<UserDashboard />} />
       </Routes>
     </div>
   );
