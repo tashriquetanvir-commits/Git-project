@@ -1,20 +1,16 @@
 const mongoose = require("mongoose");
 
-const bookingSchema = new mongoose.Schema(
+const merchandiseOrderSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    event: {
+    merchandise: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Event",
+      ref: "Merchandise",
       required: true,
-    },
-    ticketType: {
-      type: String,
-      default: "General",
     },
     quantity: {
       type: Number,
@@ -25,18 +21,13 @@ const bookingSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    paymentStatus: {
+    status: {
       type: String,
-      enum: ["Pending", "Completed", "Failed", "Refunded"],
-      default: "Pending",
-    },
-    paymentMethod: {
-      type: String,
-      enum: ["bKash", "Mock"],
-      default: "Mock",
+      enum: ["Pending", "Completed", "Cancelled"],
+      default: "Completed", // Mock payment default
     },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Booking", bookingSchema);
+module.exports = mongoose.model("MerchandiseOrder", merchandiseOrderSchema);
