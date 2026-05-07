@@ -12,7 +12,11 @@ const bookingSchema = new mongoose.Schema(
       enum: ["pending", "paid", "failed", "refunded", "Pending", "Completed", "Failed", "Refunded"],
       default: "pending",
     },
-    paymentMethod: { type: String, enum: ["mock", "bkash", "Mock", "bKash"], default: "mock" },
+    paymentMethod: { 
+      type: String, 
+      enum: ["mock", "bkash", "Mock", "bKash", "Nagad", "Cash", "Card", "Bank Transfer"], 
+      default: "mock" 
+    },
     ticketCode: { type: String, unique: true, sparse: true },
     paidAt: Date,
   },

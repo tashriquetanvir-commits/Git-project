@@ -3,16 +3,34 @@ const Event = require("../models/Event");
 const Payment = require("../models/Payment");
 
 const ensureEventHasTickets = async (event) => {
-  if (!event.ticketTypes || event.ticketTypes.length === 0) {
+  let needsSave = false;
+  if (!Array.isArray(event.ticketTypes) || event.ticketTypes.length === 0) {
     event.ticketTypes = [
       {
-        name: "Regular",
+        name: "General Admission",
         price: Number(event.price) || 100,
         quantityAvailable: 100,
         quantitySold: 0,
       },
     ];
-    await event.save();
+    needsSave = true;
+  } else {
+    event.ticketTypes = event.ticketTypes.map((ticket) => {
+      const name = ticket.name || ticket.type || "General Admission";
+      const price = Number(ticket.price || ticket.ticketPrice || event.price || 100);
+      const quantityAvailable = Number(ticket.quantityAvailable ?? ticket.available ?? 100);
+      const quantitySold = Number(ticket.quantitySold ?? ticket.sold ?? 0);
+      if (ticket.name !== name || ticket.price !== price) needsSave = true;
+      return { name, price, quantityAvailable, quantitySold };
+    });
+  }
+
+  if (needsSave) {
+    try {
+      await event.save();
+    } catch (e) {
+      console.warn("Could not save normalized event tickets:", e.message);
+    }
   }
   return event;
 };
@@ -34,7 +52,7 @@ const createBooking = async (req, res) => {
     if (event.status !== "approved") return res.status(400).json({ message: "Cannot book tickets for an unapproved event" });
 
     event = await ensureEventHasTickets(event);
-    let selectedTicket = event.ticketTypes.find((t) => t.name === ticketType) || event.ticketTypes[0];
+    let selectedTicket = event.ticketTypes.find((t) => t.name && t.name.toLowerCase() === ticketType.toLowerCase()) || event.ticketTypes[0];
     if (!selectedTicket) return res.status(400).json({ message: "Invalid ticket type selected" });
 
     const available = selectedTicket.quantityAvailable - selectedTicket.quantitySold;
@@ -71,15 +89,18 @@ const payBooking = async (req, res) => {
     if (!event) return res.status(404).json({ message: "Event not found" });
     await ensureEventHasTickets(event);
 
-    const selectedTicket = event.ticketTypes.find((t) => t.name === booking.ticketType) || event.ticketTypes[0];
+    const selectedTicket = event.ticketTypes.find((t) => t.name && t.name.toLowerCase() === (booking.ticketType || '').toLowerCase()) || event.ticketTypes[0];
     const available = selectedTicket.quantityAvailable - selectedTicket.quantitySold;
     if (available < booking.quantity) return res.status(400).json({ message: "Tickets sold out before payment completion" });
 
     selectedTicket.quantitySold += booking.quantity;
     await event.save();
 
+    const validMethods = ["bKash", "Nagad", "Cash", "Card", "Bank Transfer", "mock", "bkash"];
+    const method = req.body.method && validMethods.includes(req.body.method) ? req.body.method : "mock";
+
     booking.paymentStatus = "paid";
-    booking.paymentMethod = "mock";
+    booking.paymentMethod = method;
     booking.paidAt = new Date();
     await booking.save();
 
@@ -87,9 +108,9 @@ const payBooking = async (req, res) => {
       booking: booking._id,
       user: req.user._id,
       amount: booking.totalPrice,
-      method: "mock",
+      method: method,
       status: "paid",
-      transactionId: `MOCK-${Date.now()}`,
+      transactionId: `${method.toUpperCase()}-${Date.now()}`,
       paidAt: booking.paidAt,
     });
 

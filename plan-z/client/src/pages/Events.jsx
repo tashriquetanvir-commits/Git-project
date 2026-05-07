@@ -112,9 +112,9 @@ const Events = () => {
             <h3 style={{ marginBottom: '.5rem', paddingRight: '2rem' }}>{event.title}</h3>
             <p className="text-muted" style={{ marginBottom: '1rem', flex: 1 }}>{event.description?.slice(0, 120)}...</p>
             <div style={{ marginBottom: '1.5rem', fontSize: '.9rem' }}>
-              <div>📅 {new Date(event.date).toLocaleDateString()}</div>
-              <div>📍 {event.venue}, {event.location}</div>
-              <div style={{ fontWeight: 600, color: 'var(--accent-secondary)' }}>🎟️ From ৳{event.ticketTypes?.[0]?.price || event.price || 100}</div>
+              <div>📅 {event.date && !isNaN(new Date(event.date).getTime()) ? new Date(event.date).toLocaleDateString() : 'Date TBA'}</div>
+              <div>📍 {[event.venue, event.location].filter(Boolean).join(', ') || 'Location TBA'}</div>
+              <div style={{ fontWeight: 600, color: 'var(--accent-secondary)' }}>🎟️ From ৳{event.ticketTypes && event.ticketTypes.length > 0 ? Math.min(...event.ticketTypes.map(t => Number(t.price) || 100)) : (Number(event.price) || 100)}</div>
             </div>
             <Link to={`/events/${event._id}`} className="btn btn-outline" style={{ textAlign: 'center' }}>View Details</Link>
           </div>

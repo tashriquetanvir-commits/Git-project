@@ -23,6 +23,7 @@ const EventDetails = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingBookingId, setPendingBookingId] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('bKash');
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -30,9 +31,9 @@ const EventDetails = () => {
         const res = await API.get(`/events/${id}`);
         setEvent(res.data);
         if (res.data.ticketTypes && res.data.ticketTypes.length > 0) {
-          setTicketType(res.data.ticketTypes[0].name);
+          setTicketType(res.data.ticketTypes[0].name || res.data.ticketTypes[0].type || 'General Admission');
         } else {
-          setTicketType('General');
+          setTicketType('General Admission');
         }
         setLoading(false);
       } catch (err) {
@@ -48,21 +49,21 @@ const EventDetails = () => {
   const getTicketPrice = () => {
     if (!event) return 0;
     if (event.ticketTypes && event.ticketTypes.length > 0) {
-      const selected = event.ticketTypes.find(t => t.name === ticketType);
-      return selected ? selected.price : event.price;
+      const selected = event.ticketTypes.find(t => (t.name || t.type || 'General Admission') === ticketType);
+      return selected ? Number(selected.price || selected.ticketPrice || event.price || 100) : Number(event.price || 100);
     }
-    return event.price || 100;
+    return Number(event.price || 100);
   };
 
   const getAvailableQuantity = () => {
     if (!event) return 10; // fallback max
     if (event.ticketTypes && event.ticketTypes.length > 0) {
-      const selected = event.ticketTypes.find(t => t.name === ticketType);
+      const selected = event.ticketTypes.find(t => (t.name || t.type || 'General Admission') === ticketType);
       if (selected) {
-        return Math.max(0, selected.quantityAvailable - selected.quantitySold);
+        return Math.max(0, Number(selected.quantityAvailable ?? selected.available ?? 100) - Number(selected.quantitySold ?? selected.sold ?? 0));
       }
     }
-    return 10; // fallback
+    return 100; // fallback
   };
 
   const handleBookTicket = async (e) => {
@@ -93,7 +94,7 @@ const EventDetails = () => {
       setPendingBookingId(res.data._id);
       setShowPaymentModal(true);
     } catch (err) {
-      setBookingError(err.response?.data?.message || 'Failed to initialize booking.');
+      setBookingError(err.response?.data?.message || 'Failed to initialize booking. Server error.');
     } finally {
       setBookingLoading(false);
     }
@@ -103,7 +104,7 @@ const EventDetails = () => {
     if (!pendingBookingId) return;
     setPaymentLoading(true);
     try {
-      await API.post('/payments/mock', { bookingId: pendingBookingId });
+      await API.post('/payments/mock', { bookingId: pendingBookingId, method: paymentMethod });
       setShowPaymentModal(false);
       setBookingSuccess('Payment successful! Ticket booked. You can view it in your dashboard.');
       setQuantity(1);
@@ -146,8 +147,8 @@ const EventDetails = () => {
         <h1 style={{ fontSize: '3rem', marginBottom: '1rem', paddingRight: '100px' }}>{event.title}</h1>
         
         <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', color: 'var(--text-muted)' }}>
-          <div>📅 {new Date(event.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-          <div>📍 {event.venue}, {event.location}</div>
+          <div>📅 {event.date && !isNaN(new Date(event.date).getTime()) ? new Date(event.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Date TBA'}</div>
+          <div>📍 {[event.venue, event.location].filter(Boolean).join(', ') || 'Location TBA'}</div>
         </div>
 
         <div style={{ marginBottom: '3rem' }}>
@@ -178,13 +179,19 @@ const EventDetails = () => {
                 <label className="form-label">Ticket Type</label>
                 <select className="form-select" value={ticketType} onChange={(e) => setTicketType(e.target.value)}>
                   {event.ticketTypes && event.ticketTypes.length > 0 ? (
-                    event.ticketTypes.map(t => (
-                      <option key={t.name} value={t.name}>
-                        {t.name} (৳{t.price}) - {Math.max(0, t.quantityAvailable - t.quantitySold)} left
-                      </option>
-                    ))
+                    event.ticketTypes.map((t, index) => {
+                      const tName = t.name || t.type || 'General Admission';
+                      const tPrice = Number(t.price || t.ticketPrice || event.price || 100);
+                      const tAvail = Number(t.quantityAvailable ?? t.available ?? 100);
+                      const tSold = Number(t.quantitySold ?? t.sold ?? 0);
+                      return (
+                        <option key={index} value={tName}>
+                          {tName} (৳{tPrice}) - {Math.max(0, tAvail - tSold)} left
+                        </option>
+                      )
+                    })
                   ) : (
-                    <option value="General">General Admission (৳{event.price || 100})</option>
+                    <option value="General Admission">General Admission (৳{Number(event.price) || 100})</option>
                   )}
                 </select>
               </div>
@@ -224,6 +231,22 @@ const EventDetails = () => {
             <div style={{ marginBottom: '2rem', fontSize: '1.2rem' }}>
               Total Amount to Pay: <strong style={{ color: 'var(--accent-secondary)' }}>৳{getTicketPrice() * quantity}</strong>
             </div>
+            
+            <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+              <label className="form-label">Select Payment Method</label>
+              <select 
+                className="form-select" 
+                value={paymentMethod} 
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="bKash">bKash</option>
+                <option value="Nagad">Nagad</option>
+                <option value="Cash">Cash</option>
+                <option value="Card">Card</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+            </div>
+
             <p className="text-muted" style={{ marginBottom: '2rem' }}>
               This is a mock payment gateway for the PLAN-Z demo. Click confirm to simulate a successful transaction.
             </p>
