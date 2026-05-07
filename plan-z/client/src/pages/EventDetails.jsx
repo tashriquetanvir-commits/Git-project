@@ -14,16 +14,26 @@ const EventDetails = () => {
 
   // Booking state
   const [quantity, setQuantity] = useState(1);
-  const [ticketType, setTicketType] = useState('General');
+  const [ticketType, setTicketType] = useState('');
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState('');
   const [bookingError, setBookingError] = useState('');
+  
+  // Payment state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingBookingId, setPendingBookingId] = useState(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   useEffect(() => {
     const fetchEvent = async () => {
       try {
         const res = await API.get(`/events/${id}`);
         setEvent(res.data);
+        if (res.data.ticketTypes && res.data.ticketTypes.length > 0) {
+          setTicketType(res.data.ticketTypes[0].name);
+        } else {
+          setTicketType('General');
+        }
         setLoading(false);
       } catch (err) {
         setError('Event not found or failed to load.');
@@ -34,30 +44,76 @@ const EventDetails = () => {
     fetchEvent();
   }, [id]);
 
+  // Calculate current ticket price
+  const getTicketPrice = () => {
+    if (!event) return 0;
+    if (event.ticketTypes && event.ticketTypes.length > 0) {
+      const selected = event.ticketTypes.find(t => t.name === ticketType);
+      return selected ? selected.price : event.price;
+    }
+    return event.price || 100;
+  };
+
+  const getAvailableQuantity = () => {
+    if (!event) return 10; // fallback max
+    if (event.ticketTypes && event.ticketTypes.length > 0) {
+      const selected = event.ticketTypes.find(t => t.name === ticketType);
+      if (selected) {
+        return Math.max(0, selected.quantityAvailable - selected.quantitySold);
+      }
+    }
+    return 10; // fallback
+  };
+
   const handleBookTicket = async (e) => {
     e.preventDefault();
     setBookingError('');
     setBookingSuccess('');
-    setBookingLoading(true);
-
+    
     if (!user) {
       navigate('/login');
       return;
     }
 
+    const available = getAvailableQuantity();
+    if (quantity > available) {
+      setBookingError(`Only ${available} tickets left for this type.`);
+      return;
+    }
+
+    setBookingLoading(true);
+
     try {
-      await API.post('/bookings', {
+      const res = await API.post('/bookings', {
         eventId: id,
         quantity,
         ticketType
       });
       
-      setBookingSuccess('Ticket booked successfully! You can view it in your dashboard.');
-      setQuantity(1);
+      setPendingBookingId(res.data._id);
+      setShowPaymentModal(true);
     } catch (err) {
-      setBookingError(err.response?.data?.message || 'Failed to book ticket.');
+      setBookingError(err.response?.data?.message || 'Failed to initialize booking.');
     } finally {
       setBookingLoading(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!pendingBookingId) return;
+    setPaymentLoading(true);
+    try {
+      await API.post('/payments/mock', { bookingId: pendingBookingId });
+      setShowPaymentModal(false);
+      setBookingSuccess('Payment successful! Ticket booked. You can view it in your dashboard.');
+      setQuantity(1);
+      const refreshed = await API.get(`/events/${id}`);
+      setEvent(refreshed.data);
+    } catch (err) {
+      setBookingError(err.response?.data?.message || 'Payment failed.');
+      setShowPaymentModal(false);
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
@@ -102,7 +158,6 @@ const EventDetails = () => {
         <div style={{ background: 'rgba(0,0,0,0.3)', padding: '2rem', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
           <h3 style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between' }}>
             <span>Book Tickets</span>
-            <span style={{ color: 'var(--accent-secondary)' }}>৳{event.price} / ticket</span>
           </h3>
 
           {bookingSuccess && <div style={{ color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '1rem', borderRadius: '8px', marginBottom: '1rem', border: '1px solid rgba(16, 185, 129, 0.2)' }}>{bookingSuccess}</div>}
@@ -122,9 +177,15 @@ const EventDetails = () => {
               <div style={{ flex: '1 1 200px' }}>
                 <label className="form-label">Ticket Type</label>
                 <select className="form-select" value={ticketType} onChange={(e) => setTicketType(e.target.value)}>
-                  <option value="General">General Admission</option>
-                  <option value="VIP">VIP Pass</option>
-                  <option value="Early Bird">Early Bird</option>
+                  {event.ticketTypes && event.ticketTypes.length > 0 ? (
+                    event.ticketTypes.map(t => (
+                      <option key={t.name} value={t.name}>
+                        {t.name} (৳{t.price}) - {Math.max(0, t.quantityAvailable - t.quantitySold)} left
+                      </option>
+                    ))
+                  ) : (
+                    <option value="General">General Admission (৳{event.price || 100})</option>
+                  )}
                 </select>
               </div>
               
@@ -134,23 +195,49 @@ const EventDetails = () => {
                   type="number" 
                   className="form-input" 
                   min="1" 
-                  max="10" 
+                  max={getAvailableQuantity() > 0 ? getAvailableQuantity() : 1}
                   value={quantity} 
                   onChange={(e) => setQuantity(Number(e.target.value))} 
                 />
               </div>
 
               <div style={{ paddingBottom: '0.5rem', fontWeight: '600', fontSize: '1.2rem', minWidth: '100px' }}>
-                Total: ৳{event.price * quantity}
+                Total: ৳{getTicketPrice() * quantity}
               </div>
 
-              <button type="submit" className="btn btn-primary" disabled={bookingLoading} style={{ flex: '1 1 200px' }}>
-                {bookingLoading ? 'Processing...' : 'Confirm Booking'}
+              <button type="submit" className="btn btn-primary" disabled={bookingLoading || getAvailableQuantity() === 0} style={{ flex: '1 1 200px' }}>
+                {getAvailableQuantity() === 0 ? 'Sold Out' : bookingLoading ? 'Processing...' : 'Proceed to Payment'}
               </button>
             </form>
           )}
         </div>
       </div>
+
+      {/* Mock Payment Modal */}
+      {showPaymentModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div className="glass-panel" style={{ padding: '3rem', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
+            <h2 style={{ marginBottom: '1.5rem' }}>Secure Payment</h2>
+            <div style={{ marginBottom: '2rem', fontSize: '1.2rem' }}>
+              Total Amount to Pay: <strong style={{ color: 'var(--accent-secondary)' }}>৳{getTicketPrice() * quantity}</strong>
+            </div>
+            <p className="text-muted" style={{ marginBottom: '2rem' }}>
+              This is a mock payment gateway for the PLAN-Z demo. Click confirm to simulate a successful transaction.
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button className="btn btn-outline" onClick={() => setShowPaymentModal(false)} disabled={paymentLoading}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handlePayment} disabled={paymentLoading}>
+                {paymentLoading ? 'Processing...' : 'Confirm Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
