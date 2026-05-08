@@ -3,6 +3,8 @@ const router = express.Router();
 
 const {
   createMerchandise,
+  getAllMerchandise,
+  getMerchandiseById,
   getMerchandiseByEvent,
   updateMerchandise,
   deleteMerchandise,
@@ -13,19 +15,21 @@ const {
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 
-// PUBLIC ROUTES
+// Public list routes
+router.get("/", getAllMerchandise);
 router.get("/event/:eventId", getMerchandiseByEvent);
 
-// PROTECTED ROUTES
-router.use(protect);
+// Protected routes that must come before /:id
+router.post("/purchase", protect, authorizeRoles("attendee"), purchaseMerchandise);
+router.get("/orders/my-orders", protect, authorizeRoles("attendee"), getMyMerchandiseOrders);
+router.get("/my-orders", protect, authorizeRoles("attendee"), getMyMerchandiseOrders);
 
-// Attendee/User Routes
-router.post("/purchase", purchaseMerchandise);
-router.get("/my-orders", getMyMerchandiseOrders);
+// Organizer routes
+router.post("/", protect, authorizeRoles("organizer"), createMerchandise);
+router.put("/:id", protect, authorizeRoles("organizer"), updateMerchandise);
+router.delete("/:id", protect, authorizeRoles("organizer"), deleteMerchandise);
 
-// Organizer Routes
-router.post("/", authorizeRoles("organizer"), createMerchandise);
-router.put("/:id", authorizeRoles("organizer"), updateMerchandise);
-router.delete("/:id", authorizeRoles("organizer"), deleteMerchandise);
+// Public single item route last
+router.get("/:id", getMerchandiseById);
 
 module.exports = router;

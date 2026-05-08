@@ -23,6 +23,12 @@ const userSchema = new mongoose.Schema(
       enum: ["attendee", "organizer", "admin"],
       default: "attendee",
     },
+    favorites: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Event",
+      },
+    ],
   },
   { timestamps: true }
 );
