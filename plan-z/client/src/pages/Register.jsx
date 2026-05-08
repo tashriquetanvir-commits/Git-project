@@ -2,12 +2,17 @@ import { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 
-const Login = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
+const Register = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'attendee'
+  });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const { login } = useContext(AuthContext);
+  const { register } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -19,7 +24,12 @@ const Login = () => {
     setError('');
     setIsSubmitting(true);
     
-    const result = await login(formData.email, formData.password);
+    const result = await register(
+      formData.name,
+      formData.email,
+      formData.password,
+      formData.role
+    );
     
     if (result.success) {
       navigate('/');
@@ -33,13 +43,26 @@ const Login = () => {
     <div className="auth-page animate-fade-in">
       <div className="glass-panel auth-card">
         <div className="auth-header">
-          <h2>Welcome Back to <span className="text-gradient">PLAN-Z</span></h2>
-          <p className="text-muted">Enter your credentials to access your account</p>
+          <h2>Join <span className="text-gradient">PLAN-Z</span></h2>
+          <p className="text-muted">Create your account to start managing events</p>
         </div>
 
         {error && <div className="error-msg">{error}</div>}
 
         <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Full Name</label>
+            <input 
+              type="text" 
+              name="name" 
+              className="form-input" 
+              placeholder="John Doe"
+              value={formData.name}
+              onChange={handleChange}
+              required 
+            />
+          </div>
+
           <div className="form-group">
             <label className="form-label">Email Address</label>
             <input 
@@ -63,7 +86,21 @@ const Login = () => {
               value={formData.password}
               onChange={handleChange}
               required 
+              minLength="6"
             />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">I am a...</label>
+            <select 
+              name="role" 
+              className="form-select"
+              value={formData.role}
+              onChange={handleChange}
+            >
+              <option value="attendee">Event Attendee</option>
+              <option value="organizer">Event Organizer</option>
+            </select>
           </div>
 
           <button 
@@ -72,16 +109,16 @@ const Login = () => {
             style={{ width: '100%', marginTop: '1rem' }}
             disabled={isSubmitting}
           >
-            {isSubmitting ? 'Logging in...' : 'Log In'}
+            {isSubmitting ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
 
         <div className="auth-footer">
-          Don't have an account? <Link to="/register">Sign up</Link>
+          Already have an account? <Link to="/login">Log in</Link>
         </div>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default Register;
