@@ -58,6 +58,13 @@ export const AuthProvider = ({ children }) => {
 
   // Register function
   const register = async (name, email, password, role) => {
+    if (user) {
+      return {
+        success: false,
+        message: 'Please log out before creating a new account'
+      };
+    }
+
     try {
       const res = await API.post('/auth/register', { name, email, password, role });
       

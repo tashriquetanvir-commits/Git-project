@@ -1,6 +1,12 @@
+import { useContext } from 'react';
 import { Link } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
+import { getDashboardPath } from '../utils/dashboardPath';
 
 const Home = () => {
+  const { user } = useContext(AuthContext);
+  const dashboardPath = getDashboardPath(user?.role);
+
   return (
     <div className="container animate-fade-in" style={{ marginTop: '4rem', textAlign: 'center' }}>
       <h1 style={{ fontSize: '4rem', marginBottom: '1rem' }}>
@@ -11,9 +17,16 @@ const Home = () => {
         Join thousands of attendees and organizers today.
       </p>
       
-      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
         <Link to="/events" className="btn btn-primary">Browse Events</Link>
-        <Link to="/register" className="btn btn-outline">Create an Account</Link>
+        {user ? (
+          <Link to={dashboardPath} className="btn btn-outline">Go to Dashboard</Link>
+        ) : (
+          <>
+            <Link to="/login" className="btn btn-outline">Log In</Link>
+            <Link to="/register" className="btn btn-outline">Create an Account</Link>
+          </>
+        )}
       </div>
 
       <div className="glass-panel" style={{ marginTop: '4rem', padding: '2rem' }}>

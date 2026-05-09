@@ -5,41 +5,47 @@ const User = require("../models/User");
 const Complaint = require("../models/Complaint");
 const Order = require("../models/Order");
 
-const buildDefaultTicketTypes = (price = 100) => [
-  { name: "Regular", price: Number(price) || 100, quantityAvailable: 100, quantitySold: 0 },
-];
+const { normalizeEventTicketTypes, getMinimumTicketPrice } = require("../utils/ticketTypes");
 
-const normalizeTicketTypes = (ticketTypes, price) => {
-  if (!Array.isArray(ticketTypes) || ticketTypes.length === 0) return buildDefaultTicketTypes(price);
+const normalizeAndPersistEventTickets = async (event) => {
+  if (!event) return event;
+  const normalized = normalizeEventTicketTypes(event.ticketTypes, event.price);
+  const oldTickets = JSON.stringify((event.ticketTypes || []).map((t) => ({
+    name: t.name,
+    price: t.price,
+    quantityAvailable: t.quantityAvailable,
+    quantitySold: t.quantitySold,
+  })));
+  const newTickets = JSON.stringify(normalized);
 
-  return ticketTypes.map((ticket, index) => ({
-    name: ticket.name?.trim() || (index === 0 ? "Regular" : `Ticket ${index + 1}`),
-    price: Number(ticket.price ?? price ?? 100) || 100,
-    quantityAvailable: Number(ticket.quantityAvailable ?? ticket.quantity ?? 100) || 100,
-    quantitySold: Number(ticket.quantitySold ?? 0) || 0,
-  }));
+  if (oldTickets !== newTickets || event.price !== getMinimumTicketPrice(normalized)) {
+    event.ticketTypes = normalized;
+    event.price = getMinimumTicketPrice(normalized);
+    await event.save();
+  }
+  return event;
 };
 
 const createEvent = async (req, res) => {
   try {
-    const { title, venue, location, price = 100, description, date, category, ticketTypes } = req.body;
+    const { title, venue, location, description, date, category, ticketTypes } = req.body;
 
     if (!title || !venue || !location || !description || !date || !category) {
       return res.status(400).json({ message: "Title, venue, location, description, date, and category are required" });
     }
 
-    const eventPrice = Number(price) || 100;
+    const normalizedTickets = normalizeEventTicketTypes(ticketTypes);
     const newEvent = await Event.create({
       title,
       venue,
       location,
-      price: eventPrice,
+      price: getMinimumTicketPrice(normalizedTickets),
       description,
       date,
       category,
       organizer: req.user._id,
       status: "pending",
-      ticketTypes: normalizeTicketTypes(ticketTypes, eventPrice),
+      ticketTypes: normalizedTickets,
     });
 
     res.status(201).json(newEvent);
@@ -70,7 +76,8 @@ const getEvents = async (req, res) => {
     }
 
     const events = await Event.find(query).populate("organizer", "name email").sort({ date: 1 });
-    res.status(200).json(events);
+    const normalizedEvents = await Promise.all(events.map(normalizeAndPersistEventTickets));
+    res.status(200).json(normalizedEvents);
   } catch (err) {
     console.error("Get events error:", err.message);
     res.status(500).json({ message: "Server error", error: err.message });
@@ -82,6 +89,7 @@ const getEventById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ message: "Invalid event ID" });
     const event = await Event.findById(req.params.id).populate("organizer", "name email");
     if (!event) return res.status(404).json({ message: "Event not found" });
+    await normalizeAndPersistEventTickets(event);
     res.status(200).json(event);
   } catch (err) {
     console.error("Get event error:", err.message);
@@ -92,7 +100,8 @@ const getEventById = async (req, res) => {
 const getOrganizerEvents = async (req, res) => {
   try {
     const events = await Event.find({ organizer: req.user._id }).sort("-createdAt");
-    res.status(200).json(events);
+    const normalizedEvents = await Promise.all(events.map(normalizeAndPersistEventTickets));
+    res.status(200).json(normalizedEvents);
   } catch (err) {
     console.error("Get organizer events error:", err.message);
     res.status(500).json({ message: "Server error", error: err.message });
@@ -107,11 +116,14 @@ const updateEvent = async (req, res) => {
       return res.status(403).json({ message: "Not authorized to update this event" });
     }
 
-    const allowedFields = ["title", "venue", "location", "price", "description", "date", "category", "ticketTypes"];
+    const allowedFields = ["title", "venue", "location", "description", "date", "category"];
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) event[field] = req.body[field];
     });
-    if (req.body.ticketTypes !== undefined) event.ticketTypes = normalizeTicketTypes(req.body.ticketTypes, event.price);
+    if (req.body.ticketTypes !== undefined) {
+      event.ticketTypes = normalizeEventTicketTypes(req.body.ticketTypes, event.price);
+      event.price = getMinimumTicketPrice(event.ticketTypes);
+    }
     await event.save();
     res.status(200).json(event);
   } catch (err) {
@@ -155,7 +167,8 @@ const deleteEvent = async (req, res) => {
 const getAllEventsAdmin = async (req, res) => {
   try {
     const events = await Event.find().populate("organizer", "name email").sort("-createdAt");
-    res.status(200).json(events);
+    const normalizedEvents = await Promise.all(events.map(normalizeAndPersistEventTickets));
+    res.status(200).json(normalizedEvents);
   } catch (err) {
     console.error("Admin get all events error:", err.message);
     res.status(500).json({ message: "Server error", error: err.message });

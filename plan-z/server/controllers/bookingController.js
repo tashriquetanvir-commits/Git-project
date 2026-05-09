@@ -1,37 +1,28 @@
 const Booking = require("../models/Booking");
 const Event = require("../models/Event");
 const Payment = require("../models/Payment");
+const { normalizeEventTicketTypes, mapLegacyTicketName } = require("../utils/ticketTypes");
 
 const ensureEventHasTickets = async (event) => {
-  let needsSave = false;
-  if (!Array.isArray(event.ticketTypes) || event.ticketTypes.length === 0) {
-    event.ticketTypes = [
-      {
-        name: "General Admission",
-        price: Number(event.price) || 100,
-        quantityAvailable: 100,
-        quantitySold: 0,
-      },
-    ];
-    needsSave = true;
-  } else {
-    event.ticketTypes = event.ticketTypes.map((ticket) => {
-      const name = ticket.name || ticket.type || "General Admission";
-      const price = Number(ticket.price || ticket.ticketPrice || event.price || 100);
-      const quantityAvailable = Number(ticket.quantityAvailable ?? ticket.available ?? 100);
-      const quantitySold = Number(ticket.quantitySold ?? ticket.sold ?? 0);
-      if (ticket.name !== name || ticket.price !== price) needsSave = true;
-      return { name, price, quantityAvailable, quantitySold };
-    });
-  }
+  const normalizedTickets = normalizeEventTicketTypes(event.ticketTypes, event.price);
+  const oldTickets = JSON.stringify((event.ticketTypes || []).map((t) => ({
+    name: t.name,
+    price: t.price,
+    quantityAvailable: t.quantityAvailable,
+    quantitySold: t.quantitySold,
+  })));
+  const newTickets = JSON.stringify(normalizedTickets);
 
-  if (needsSave) {
+  if (oldTickets !== newTickets) {
+    event.ticketTypes = normalizedTickets;
+    event.price = Math.min(...normalizedTickets.map((ticket) => ticket.price));
     try {
       await event.save();
     } catch (e) {
       console.warn("Could not save normalized event tickets:", e.message);
     }
   }
+
   return event;
 };
 
@@ -41,7 +32,7 @@ const createBooking = async (req, res) => {
       return res.status(403).json({ message: "Only attendees can book tickets" });
     }
 
-    const { eventId, quantity, ticketType = "Regular", paymentMethod = "mock" } = req.body;
+    const { eventId, quantity, ticketType = "General Pass", paymentMethod = "mock" } = req.body;
     const requestedQuantity = Number(quantity);
 
     if (!eventId || !requestedQuantity) return res.status(400).json({ message: "Event ID and quantity are required" });
@@ -52,7 +43,8 @@ const createBooking = async (req, res) => {
     if (event.status !== "approved") return res.status(400).json({ message: "Cannot book tickets for an unapproved event" });
 
     event = await ensureEventHasTickets(event);
-    let selectedTicket = event.ticketTypes.find((t) => t.name && t.name.toLowerCase() === ticketType.toLowerCase()) || event.ticketTypes[0];
+    const normalizedRequestedTicket = mapLegacyTicketName(ticketType) || ticketType;
+    let selectedTicket = event.ticketTypes.find((t) => t.name && t.name.toLowerCase() === normalizedRequestedTicket.toLowerCase()) || event.ticketTypes[0];
     if (!selectedTicket) return res.status(400).json({ message: "Invalid ticket type selected" });
 
     const available = selectedTicket.quantityAvailable - selectedTicket.quantitySold;
@@ -89,7 +81,8 @@ const payBooking = async (req, res) => {
     if (!event) return res.status(404).json({ message: "Event not found" });
     await ensureEventHasTickets(event);
 
-    const selectedTicket = event.ticketTypes.find((t) => t.name && t.name.toLowerCase() === (booking.ticketType || '').toLowerCase()) || event.ticketTypes[0];
+    const normalizedBookingTicket = mapLegacyTicketName(booking.ticketType) || booking.ticketType || "General Pass";
+    const selectedTicket = event.ticketTypes.find((t) => t.name && t.name.toLowerCase() === normalizedBookingTicket.toLowerCase()) || event.ticketTypes[0];
     const available = selectedTicket.quantityAvailable - selectedTicket.quantitySold;
     if (available < booking.quantity) return res.status(400).json({ message: "Tickets sold out before payment completion" });
 

@@ -4,7 +4,7 @@ const bookingSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     event: { type: mongoose.Schema.Types.ObjectId, ref: "Event", required: true },
-    ticketType: { type: String, default: "Regular" },
+    ticketType: { type: String, default: "General Pass" },
     quantity: { type: Number, required: true, min: 1 },
     totalPrice: { type: Number, required: true, min: 0 },
     paymentStatus: {

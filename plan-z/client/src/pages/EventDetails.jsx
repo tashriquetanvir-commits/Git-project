@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import API from '../services/api';
 import { AuthContext } from '../context/AuthContext';
+import { normalizeTickets } from '../utils/tickets';
 
 const EventDetails = () => {
   const { id } = useParams();
@@ -29,12 +30,9 @@ const EventDetails = () => {
     const fetchEvent = async () => {
       try {
         const res = await API.get(`/events/${id}`);
-        setEvent(res.data);
-        if (res.data.ticketTypes && res.data.ticketTypes.length > 0) {
-          setTicketType(res.data.ticketTypes[0].name || res.data.ticketTypes[0].type || 'General Admission');
-        } else {
-          setTicketType('General Admission');
-        }
+        const normalized = { ...res.data, ticketTypes: normalizeTickets(res.data.ticketTypes, res.data.price) };
+        setEvent(normalized);
+        setTicketType(normalized.ticketTypes[0].name);
         setLoading(false);
       } catch (err) {
         setError('Event not found or failed to load.');
@@ -48,22 +46,16 @@ const EventDetails = () => {
   // Calculate current ticket price
   const getTicketPrice = () => {
     if (!event) return 0;
-    if (event.ticketTypes && event.ticketTypes.length > 0) {
-      const selected = event.ticketTypes.find(t => (t.name || t.type || 'General Admission') === ticketType);
-      return selected ? Number(selected.price || selected.ticketPrice || event.price || 100) : Number(event.price || 100);
-    }
-    return Number(event.price || 100);
+    const tickets = normalizeTickets(event.ticketTypes, event.price);
+    const selected = tickets.find(t => t.name === ticketType) || tickets[0];
+    return selected.price;
   };
 
   const getAvailableQuantity = () => {
     if (!event) return 10; // fallback max
-    if (event.ticketTypes && event.ticketTypes.length > 0) {
-      const selected = event.ticketTypes.find(t => (t.name || t.type || 'General Admission') === ticketType);
-      if (selected) {
-        return Math.max(0, Number(selected.quantityAvailable ?? selected.available ?? 100) - Number(selected.quantitySold ?? selected.sold ?? 0));
-      }
-    }
-    return 100; // fallback
+    const tickets = normalizeTickets(event.ticketTypes, event.price);
+    const selected = tickets.find(t => t.name === ticketType) || tickets[0];
+    return Math.max(0, Number(selected.quantityAvailable) - Number(selected.quantitySold));
   };
 
   const handleBookTicket = async (e) => {
@@ -109,7 +101,7 @@ const EventDetails = () => {
       setBookingSuccess('Payment successful! Ticket booked. You can view it in your dashboard.');
       setQuantity(1);
       const refreshed = await API.get(`/events/${id}`);
-      setEvent(refreshed.data);
+      setEvent({ ...refreshed.data, ticketTypes: normalizeTickets(refreshed.data.ticketTypes, refreshed.data.price) });
     } catch (err) {
       setBookingError(err.response?.data?.message || 'Payment failed.');
       setShowPaymentModal(false);
@@ -178,21 +170,11 @@ const EventDetails = () => {
               <div style={{ flex: '1 1 200px' }}>
                 <label className="form-label">Ticket Type</label>
                 <select className="form-select" value={ticketType} onChange={(e) => setTicketType(e.target.value)}>
-                  {event.ticketTypes && event.ticketTypes.length > 0 ? (
-                    event.ticketTypes.map((t, index) => {
-                      const tName = t.name || t.type || 'General Admission';
-                      const tPrice = Number(t.price || t.ticketPrice || event.price || 100);
-                      const tAvail = Number(t.quantityAvailable ?? t.available ?? 100);
-                      const tSold = Number(t.quantitySold ?? t.sold ?? 0);
-                      return (
-                        <option key={index} value={tName}>
-                          {tName} (৳{tPrice}) - {Math.max(0, tAvail - tSold)} left
-                        </option>
-                      )
-                    })
-                  ) : (
-                    <option value="General Admission">General Admission (৳{Number(event.price) || 100})</option>
-                  )}
+                  {normalizeTickets(event.ticketTypes, event.price).map((t) => (
+                    <option key={t.name} value={t.name}>
+                      {t.name} (৳{t.price}) - {Math.max(0, t.quantityAvailable - t.quantitySold)} left
+                    </option>
+                  ))}
                 </select>
               </div>
               
