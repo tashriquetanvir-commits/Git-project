@@ -1,8 +1,60 @@
 import { useState, useEffect } from 'react';
 import API from '../services/api';
 
-const emptyEvent = { title: '', venue: '', location: '', price: 100, description: '', date: '', category: '', ticketTypes: [{ name: 'Regular', price: 100, quantityAvailable: 100 }] };
-const emptyMerch = { name: '', description: '', productType: 'General', price: 500, stock: 50, image: '' };
+const TICKET_CATEGORIES = [
+  { name: 'General Pass', defaultPrice: 100, defaultQuantity: 100 },
+  { name: 'VIP', defaultPrice: 500, defaultQuantity: 30 },
+  { name: 'Early Access', defaultPrice: 250, defaultQuantity: 50 },
+];
+
+const buildDefaultTickets = () => TICKET_CATEGORIES.map((ticket) => ({
+  name: ticket.name,
+  price: ticket.defaultPrice,
+  quantityAvailable: ticket.defaultQuantity,
+  quantitySold: 0,
+}));
+
+const normalizeTicketName = (name = '') => {
+  const value = String(name).trim().toLowerCase();
+  if (['regular', 'general', 'general admission', 'general pass', 'standard'].includes(value)) return 'General Pass';
+  if (value === 'vip') return 'VIP';
+  if (['early', 'early access', 'early bird'].includes(value)) return 'Early Access';
+  return name;
+};
+
+const normalizeTickets = (ticketTypes = []) => {
+  const existing = {};
+  if (Array.isArray(ticketTypes)) {
+    ticketTypes.forEach((ticket) => {
+      const name = normalizeTicketName(ticket.name || ticket.type || ticket.ticketType || '');
+      if (TICKET_CATEGORIES.some((category) => category.name === name) && !existing[name]) {
+        existing[name] = ticket;
+      }
+    });
+  }
+
+  return TICKET_CATEGORIES.map((category) => {
+    const ticket = existing[category.name] || {};
+    return {
+      name: category.name,
+      price: Number(ticket.price ?? ticket.ticketPrice ?? category.defaultPrice) || category.defaultPrice,
+      quantityAvailable: Number(ticket.quantityAvailable ?? ticket.quantity ?? ticket.available ?? category.defaultQuantity) || category.defaultQuantity,
+      quantitySold: Number(ticket.quantitySold ?? ticket.sold ?? 0) || 0,
+    };
+  });
+};
+
+const emptyEvent = {
+  title: '',
+  venue: '',
+  location: '',
+  description: '',
+  date: '',
+  category: '',
+  ticketTypes: buildDefaultTickets(),
+};
+
+const emptyMerch = { name: '', description: '', productType: 'General', price: 500, stock: 50 };
 
 const OrganizerDashboard = () => {
   const [events, setEvents] = useState([]);
@@ -33,23 +85,38 @@ const OrganizerDashboard = () => {
   useEffect(() => { fetchMyEvents(); }, []);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
   const handleTicketChange = (index, field, value) => {
     const updated = [...formData.ticketTypes];
-    updated[index] = { ...updated[index], [field]: field === 'name' ? value : Number(value) };
+    updated[index] = {
+      ...updated[index],
+      [field]: Number(value) < 0 ? 0 : Number(value),
+    };
     setFormData({ ...formData, ticketTypes: updated });
   };
 
   const resetEventForm = () => {
-    setFormData(emptyEvent);
+    setFormData({ ...emptyEvent, ticketTypes: buildDefaultTickets() });
     setEditingEventId(null);
     setShowForm(false);
   };
 
+  const getEventPayload = () => ({
+    title: formData.title,
+    venue: formData.venue,
+    location: formData.location,
+    description: formData.description,
+    date: formData.date,
+    category: formData.category,
+    ticketTypes: normalizeTickets(formData.ticketTypes),
+  });
+
   const handleSubmitEvent = async (e) => {
     e.preventDefault();
     try {
-      if (editingEventId) await API.put(`/events/${editingEventId}`, formData);
-      else await API.post('/events', formData);
+      const payload = getEventPayload();
+      if (editingEventId) await API.put(`/events/${editingEventId}`, payload);
+      else await API.post('/events', payload);
       resetEventForm();
       fetchMyEvents();
     } catch (err) {
@@ -62,11 +129,10 @@ const OrganizerDashboard = () => {
       title: event.title || '',
       venue: event.venue || '',
       location: event.location || '',
-      price: event.price || 100,
       description: event.description || '',
       date: event.date ? new Date(event.date).toISOString().slice(0, 10) : '',
       category: event.category || '',
-      ticketTypes: event.ticketTypes?.length ? event.ticketTypes.map(t => ({ name: t.name, price: t.price, quantityAvailable: t.quantityAvailable })) : [{ name: 'Regular', price: event.price || 100, quantityAvailable: 100 }],
+      ticketTypes: normalizeTickets(event.ticketTypes),
     });
     setEditingEventId(event._id);
     setShowForm(true);
@@ -103,6 +169,7 @@ const OrganizerDashboard = () => {
 
   const handleMerchChange = (e) => setMerchForm({ ...merchForm, [e.target.name]: e.target.value });
   const resetMerchForm = () => { setMerchForm(emptyMerch); setEditingMerchId(null); };
+
   const saveMerchandise = async (e) => {
     e.preventDefault();
     if (!selectedEvent) return;
@@ -118,7 +185,13 @@ const OrganizerDashboard = () => {
 
   const editMerchandise = (item) => {
     setEditingMerchId(item._id);
-    setMerchForm({ name: item.name, description: item.description, productType: item.productType || 'General', price: item.price, stock: item.stock, image: item.image || '' });
+    setMerchForm({
+      name: item.name,
+      description: item.description,
+      productType: item.productType || 'General',
+      price: item.price,
+      stock: item.stock,
+    });
   };
 
   const deleteMerchandise = async (itemId) => {
@@ -131,13 +204,20 @@ const OrganizerDashboard = () => {
     }
   };
 
+  const formatEventDate = (date) => {
+    const parsed = new Date(date);
+    return date && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleDateString() : 'Date TBA';
+  };
+
+  const formatEventLocation = (event) => [event.venue, event.location].filter(Boolean).join(', ') || 'Location TBA';
+
   if (loading) return <div className="container text-center" style={{ marginTop: '5rem' }}><h2>Loading Dashboard...</h2></div>;
 
   return (
     <div className="container animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h2>Organizer <span className="text-gradient">Dashboard</span></h2>
-        <button className="btn btn-primary" onClick={() => { setShowForm(!showForm); setEditingEventId(null); setFormData(emptyEvent); }}>{showForm ? 'Close Form' : '+ Create New Event'}</button>
+        <button className="btn btn-primary" onClick={() => { setShowForm(!showForm); setEditingEventId(null); setFormData({ ...emptyEvent, ticketTypes: buildDefaultTickets() }); }}>{showForm ? 'Close Form' : '+ Create New Event'}</button>
       </div>
       {error && <div className="error-msg">{error}</div>}
 
@@ -145,13 +225,34 @@ const OrganizerDashboard = () => {
         <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
           <h3>{editingEventId ? 'Edit Event' : 'Create Event'}</h3>
           <form onSubmit={handleSubmitEvent} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-            {['title','category','venue','location'].map((field) => <div className="form-group" key={field}><label className="form-label">{field[0].toUpperCase()+field.slice(1)}</label><input type="text" name={field} className="form-input" value={formData[field]} onChange={handleChange} required /></div>)}
+            {['title','category','venue','location'].map((field) => (
+              <div className="form-group" key={field}>
+                <label className="form-label">{field[0].toUpperCase()+field.slice(1)}</label>
+                <input type="text" name={field} className="form-input" value={formData[field]} onChange={handleChange} required />
+              </div>
+            ))}
             <div className="form-group"><label className="form-label">Date</label><input type="date" name="date" className="form-input" value={formData.date} onChange={handleChange} required /></div>
-            <div className="form-group"><label className="form-label">Base Price</label><input type="number" name="price" className="form-input" value={formData.price} onChange={handleChange} min="0" required /></div>
             <div className="form-group" style={{ gridColumn: 'span 2' }}><label className="form-label">Description</label><textarea name="description" className="form-input" rows="3" value={formData.description} onChange={handleChange} required /></div>
+
             <div className="glass-panel" style={{ gridColumn: 'span 2', padding: '1rem', background: 'rgba(0,0,0,.2)' }}>
-              <h4 style={{ marginBottom: '1rem' }}>Ticket Types</h4>
-              {formData.ticketTypes.map((ticket, i) => <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}><input className="form-input" value={ticket.name} onChange={e => handleTicketChange(i,'name',e.target.value)} placeholder="Regular" /><input className="form-input" type="number" value={ticket.price} onChange={e => handleTicketChange(i,'price',e.target.value)} placeholder="100" /><input className="form-input" type="number" value={ticket.quantityAvailable} onChange={e => handleTicketChange(i,'quantityAvailable',e.target.value)} placeholder="100" /></div>)}
+              <h4 style={{ marginBottom: '.5rem' }}>Ticket Categories</h4>
+              <p className="text-muted" style={{ marginBottom: '1rem' }}>Set the price and available quantity for each required ticket type.</p>
+              {formData.ticketTypes.map((ticket, i) => (
+                <div key={ticket.name} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '1rem', marginBottom: '1rem', alignItems: 'end' }}>
+                  <div>
+                    <label className="form-label">Ticket Category</label>
+                    <input className="form-input" value={ticket.name} readOnly />
+                  </div>
+                  <div>
+                    <label className="form-label">{ticket.name} Price (৳)</label>
+                    <input className="form-input" type="number" min="0" value={ticket.price} onChange={e => handleTicketChange(i,'price',e.target.value)} required />
+                  </div>
+                  <div>
+                    <label className="form-label">{ticket.name} Quantity</label>
+                    <input className="form-input" type="number" min="0" value={ticket.quantityAvailable} onChange={e => handleTicketChange(i,'quantityAvailable',e.target.value)} required />
+                  </div>
+                </div>
+              ))}
             </div>
             <button type="submit" className="btn btn-primary" style={{ gridColumn: 'span 2' }}>{editingEventId ? 'Save Changes' : 'Submit Event'}</button>
           </form>
@@ -161,7 +262,7 @@ const OrganizerDashboard = () => {
       <h3>Your Events</h3>
       {events.length === 0 ? <p className="text-muted" style={{ marginTop: '1rem' }}>You have not created events yet.</p> : <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
         {events.map((event) => <div key={event._id} className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div><h4 style={{ fontSize: '1.2rem', marginBottom: '.5rem' }}>{event.title}</h4><div style={{ color: 'var(--text-muted)', fontSize: '.9rem' }}>📅 {new Date(event.date).toLocaleDateString()} | 📍 {event.venue}, {event.location}</div></div>
+          <div><h4 style={{ fontSize: '1.2rem', marginBottom: '.5rem' }}>{event.title}</h4><div style={{ color: 'var(--text-muted)', fontSize: '.9rem' }}>📅 {formatEventDate(event.date)} | 📍 {formatEventLocation(event)}</div></div>
           <div style={{ display: 'flex', gap: '.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ padding: '.3rem .8rem', borderRadius: '20px', fontSize: '.8rem', background: event.status === 'approved' ? 'rgba(16,185,129,.2)' : event.status === 'rejected' || event.status === 'removed' ? 'rgba(239,68,68,.2)' : 'rgba(245,158,11,.2)', color: event.status === 'approved' ? '#10b981' : event.status === 'rejected' || event.status === 'removed' ? '#ef4444' : '#f59e0b' }}>{event.status?.toUpperCase()}</span>
             <button className="btn btn-outline" onClick={() => startEditEvent(event)} style={{ padding: '.4rem .9rem' }}>Edit</button>
@@ -184,7 +285,6 @@ const OrganizerDashboard = () => {
             <input className="form-input" name="productType" placeholder="Product Type" value={merchForm.productType} onChange={handleMerchChange} />
             <input className="form-input" name="price" type="number" placeholder="Price" value={merchForm.price} onChange={handleMerchChange} min="1" required />
             <input className="form-input" name="stock" type="number" placeholder="Stock" value={merchForm.stock} onChange={handleMerchChange} min="0" required />
-            <input className="form-input" name="image" placeholder="Image URL optional" value={merchForm.image} onChange={handleMerchChange} />
             <input className="form-input" name="description" placeholder="Description" value={merchForm.description} onChange={handleMerchChange} required />
             <button className="btn btn-primary" type="submit">{editingMerchId ? 'Update Merchandise' : 'Add Merchandise'}</button>
             {editingMerchId && <button className="btn btn-outline" type="button" onClick={resetMerchForm}>Cancel Edit</button>}
